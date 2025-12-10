@@ -1,6 +1,7 @@
 # 🧬 ProteinLab
 
 An interactive web platform for exploring and mutating protein sequences. Built to demonstrate full-stack development skills for computational biology applications.
+Try it yourself at https://proteinlab.vercel.app/
 
 ## Features
 
