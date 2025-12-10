@@ -11,13 +11,17 @@ app = FastAPI(title="ProteinLab API", version="1.0.0")
 # CORS for React
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=[
+        "http://localhost:3000",
+        "https://proteinlab-a4nqpz1f8-donalds-projects-57c2319a.vercel.app",
+        "https://*.vercel.app"  # Allow all Vercel preview deployments
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# In-memory storage (good enough for tonight!)
+# In-memory storage
 sequences_db = {}
 sequence_counter = 0
 
