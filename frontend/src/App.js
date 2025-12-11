@@ -26,6 +26,7 @@ const AA_COLORS = {
 
 // Simple 3D Protein Viewer using Canvas
 // Simple 3D Protein Viewer using Canvas
+// Simple 3D Protein Viewer using Canvas
 function Protein3DViewer({ sequence }) {
   const canvasRef = useRef(null);
   const rotationRef = useRef({ x: 0, y: 0 });
@@ -40,22 +41,24 @@ function Protein3DViewer({ sequence }) {
     const height = canvas.height = 600;
 
     // Create simplified 3D helix structure
-    const points = [];
     const aminoAcids = sequence.split('');
     const radius = 80;
     const helixHeight = 400;
+    const turnCount = 4; // Number of helix turns
     
-    aminoAcids.forEach((aa, i) => {
-      const angle = (i / aminoAcids.length) * Math.PI * 6; // Multiple turns
-      const yPos = (i / aminoAcids.length) * helixHeight - helixHeight / 2;
+    const originalPoints = aminoAcids.map((aa, i) => {
+      const t = i / aminoAcids.length;
+      const angle = t * Math.PI * 2 * turnCount;
+      const yPos = t * helixHeight - helixHeight / 2;
       
-      points.push({
+      return {
         x: Math.cos(angle) * radius,
         y: yPos,
         z: Math.sin(angle) * radius,
         aa: aa,
-        color: AA_COLORS[aa] || '#ccc'
-      });
+        color: AA_COLORS[aa] || '#ccc',
+        index: i // Keep track of original order
+      };
     });
 
     function adjustBrightness(color, amount) {
@@ -66,33 +69,34 @@ function Protein3DViewer({ sequence }) {
       return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')}`;
     }
 
+    function rotatePoint(p, rotX, rotY) {
+      // Rotate around Y axis
+      let x = p.x * Math.cos(rotY) - p.z * Math.sin(rotY);
+      let z = p.x * Math.sin(rotY) + p.z * Math.cos(rotY);
+      
+      // Rotate around X axis
+      let y = p.y * Math.cos(rotX) - z * Math.sin(rotX);
+      z = p.y * Math.sin(rotX) + z * Math.cos(rotX);
+
+      return { ...p, x, y, z };
+    }
+
     function render() {
       ctx.fillStyle = '#1a1a2e';
       ctx.fillRect(0, 0, width, height);
 
-      // Update rotation using ref (doesn't trigger re-render)
-      rotationRef.current.x += 0.003;
-      rotationRef.current.y += 0.005;
+      // Update rotation
+      rotationRef.current.x += 0.005;
+      rotationRef.current.y += 0.008;
 
-      // Rotate points
-      const rotatedPoints = points.map(p => {
-        // Rotate around Y axis
-        let x = p.x * Math.cos(rotationRef.current.y) - p.z * Math.sin(rotationRef.current.y);
-        let z = p.x * Math.sin(rotationRef.current.y) + p.z * Math.cos(rotationRef.current.y);
-        
-        // Rotate around X axis
-        let y = p.y * Math.cos(rotationRef.current.x) - z * Math.sin(rotationRef.current.x);
-        z = p.y * Math.sin(rotationRef.current.x) + z * Math.cos(rotationRef.current.x);
+      // Rotate all points (keep original order)
+      const rotatedPoints = originalPoints.map(p => 
+        rotatePoint(p, rotationRef.current.x, rotationRef.current.y)
+      );
 
-        return { ...p, x, y, z };
-      });
-
-      // Sort by depth (z-index)
-      rotatedPoints.sort((a, b) => b.z - a.z);
-
-      // Draw connections (backbone)
+      // Draw backbone FIRST (in original order, not sorted)
       ctx.strokeStyle = '#4a5568';
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 3;
       ctx.beginPath();
       rotatedPoints.forEach((p, i) => {
         const screenX = width / 2 + p.x * 2;
@@ -106,20 +110,23 @@ function Protein3DViewer({ sequence }) {
       });
       ctx.stroke();
 
+      // Now sort by depth for proper sphere rendering
+      const sortedForRendering = [...rotatedPoints].sort((a, b) => a.z - b.z);
+
       // Draw amino acids as spheres
-      rotatedPoints.forEach(p => {
+      sortedForRendering.forEach(p => {
         const screenX = width / 2 + p.x * 2;
         const screenY = height / 2 + p.y;
-        const scale = 1 + (p.z / 200); // Perspective scaling
-        const size = 8 * scale;
+        const scale = 1 + (p.z / 300); // Perspective scaling
+        const size = 10 * scale;
 
         // Shadow for depth
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
         ctx.beginPath();
         ctx.arc(screenX + 2, screenY + 2, size, 0, Math.PI * 2);
         ctx.fill();
 
-        // Amino acid sphere
+        // Amino acid sphere with gradient
         const gradient = ctx.createRadialGradient(
           screenX - size/3, screenY - size/3, 0,
           screenX, screenY, size
@@ -133,9 +140,9 @@ function Protein3DViewer({ sequence }) {
         ctx.fill();
 
         // Highlight
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
         ctx.beginPath();
-        ctx.arc(screenX - size/4, screenY - size/4, size/3, 0, Math.PI * 2);
+        ctx.arc(screenX - size/3, screenY - size/3, size/3, 0, Math.PI * 2);
         ctx.fill();
       });
 
@@ -149,7 +156,7 @@ function Protein3DViewer({ sequence }) {
         cancelAnimationFrame(animationRef.current);
       }
     };
-  }, [sequence]); // Only re-run when sequence changes
+  }, [sequence]);
 
   return (
     <div className="viewer-3d">
