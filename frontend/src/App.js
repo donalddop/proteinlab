@@ -25,9 +25,10 @@ const AA_COLORS = {
 };
 
 // Simple 3D Protein Viewer using Canvas
+// Simple 3D Protein Viewer using Canvas
 function Protein3DViewer({ sequence }) {
   const canvasRef = useRef(null);
-  const [rotation, setRotation] = useState({ x: 0, y: 0 });
+  const rotationRef = useRef({ x: 0, y: 0 });
   const animationRef = useRef(null);
 
   useEffect(() => {
@@ -57,19 +58,31 @@ function Protein3DViewer({ sequence }) {
       });
     });
 
+    function adjustBrightness(color, amount) {
+      const num = parseInt(color.slice(1), 16);
+      const r = Math.max(0, Math.min(255, (num >> 16) + amount));
+      const g = Math.max(0, Math.min(255, ((num >> 8) & 0x00FF) + amount));
+      const b = Math.max(0, Math.min(255, (num & 0x0000FF) + amount));
+      return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')}`;
+    }
+
     function render() {
       ctx.fillStyle = '#1a1a2e';
       ctx.fillRect(0, 0, width, height);
 
+      // Update rotation using ref (doesn't trigger re-render)
+      rotationRef.current.x += 0.003;
+      rotationRef.current.y += 0.005;
+
       // Rotate points
       const rotatedPoints = points.map(p => {
         // Rotate around Y axis
-        let x = p.x * Math.cos(rotation.y) - p.z * Math.sin(rotation.y);
-        let z = p.x * Math.sin(rotation.y) + p.z * Math.cos(rotation.y);
+        let x = p.x * Math.cos(rotationRef.current.y) - p.z * Math.sin(rotationRef.current.y);
+        let z = p.x * Math.sin(rotationRef.current.y) + p.z * Math.cos(rotationRef.current.y);
         
         // Rotate around X axis
-        let y = p.y * Math.cos(rotation.x) - z * Math.sin(rotation.x);
-        z = p.y * Math.sin(rotation.x) + z * Math.cos(rotation.x);
+        let y = p.y * Math.cos(rotationRef.current.x) - z * Math.sin(rotationRef.current.x);
+        z = p.y * Math.sin(rotationRef.current.x) + z * Math.cos(rotationRef.current.x);
 
         return { ...p, x, y, z };
       });
@@ -126,12 +139,6 @@ function Protein3DViewer({ sequence }) {
         ctx.fill();
       });
 
-      // Auto-rotate
-      setRotation(prev => ({
-        x: prev.x + 0.003,
-        y: prev.y + 0.005
-      }));
-
       animationRef.current = requestAnimationFrame(render);
     }
 
@@ -142,15 +149,7 @@ function Protein3DViewer({ sequence }) {
         cancelAnimationFrame(animationRef.current);
       }
     };
-  }, [sequence, rotation]);
-
-  function adjustBrightness(color, amount) {
-    const num = parseInt(color.slice(1), 16);
-    const r = Math.max(0, Math.min(255, (num >> 16) + amount));
-    const g = Math.max(0, Math.min(255, ((num >> 8) & 0x00FF) + amount));
-    const b = Math.max(0, Math.min(255, (num & 0x0000FF) + amount));
-    return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')}`;
-  }
+  }, [sequence]); // Only re-run when sequence changes
 
   return (
     <div className="viewer-3d">
