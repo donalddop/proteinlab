@@ -1,6 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import axios from 'axios';
 import './App.css';
+import { Canvas, useThree } from '@react-three/fiber';
+import { OrbitControls, Sphere, Line, Html } from '@react-three/drei';
+import * as THREE from 'three';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
@@ -24,158 +27,200 @@ const AA_COLORS = {
   'G': '#95A5A6'
 };
 
-// Simple 3D Protein Viewer using Canvas
-// Simple 3D Protein Viewer using Canvas
-// Simple 3D Protein Viewer using Canvas
-function Protein3DViewer({ sequence }) {
-  const canvasRef = useRef(null);
-  const rotationRef = useRef({ x: 0, y: 0 });
-  const animationRef = useRef(null);
 
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
 
-    const ctx = canvas.getContext('2d');
-    const width = canvas.width = 800;
-    const height = canvas.height = 600;
+// ============================================================================
 
-    // Create simplified 3D helix structure
+// 3D Protein Viewer using React Three Fiber
+
+// ============================================================================
+
+
+
+// Helper component for each amino acid sphere
+function AminoAcidSphere({ position, aa, color, onHover, onUnhover }) {
+  return (
+    <Sphere
+      position={position}
+      args={[0.8, 32, 32]} // radius, widthSegments, heightSegments
+      onPointerOver={(e) => {
+        e.stopPropagation();
+        onHover(aa, e.clientX, e.clientY);
+      }}
+      onPointerOut={(e) => {
+        e.stopPropagation();
+        onUnhover();
+      }}
+    >
+      <meshStandardMaterial color={color} roughness={0.5} />
+    </Sphere>
+  );
+}
+
+// The main 3D model component
+function ProteinModel({ sequence, setTooltip }) {
+  const { camera } = useThree();
+
+  const points = useMemo(() => {
     const aminoAcids = sequence.split('');
-    const radius = 80;
-    const helixHeight = 400;
-    const turnCount = 4; // Number of helix turns
+    const radius = 5;
+    const helixHeight = 25;
+    const turnCount = 4;
     
-    const originalPoints = aminoAcids.map((aa, i) => {
+    return aminoAcids.map((aa, i) => {
       const t = i / aminoAcids.length;
       const angle = t * Math.PI * 2 * turnCount;
       const yPos = t * helixHeight - helixHeight / 2;
       
-      return {
-        x: Math.cos(angle) * radius,
-        y: yPos,
-        z: Math.sin(angle) * radius,
-        aa: aa,
-        color: AA_COLORS[aa] || '#ccc',
-        index: i // Keep track of original order
-      };
-    });
-
-    function adjustBrightness(color, amount) {
-      const num = parseInt(color.slice(1), 16);
-      const r = Math.max(0, Math.min(255, (num >> 16) + amount));
-      const g = Math.max(0, Math.min(255, ((num >> 8) & 0x00FF) + amount));
-      const b = Math.max(0, Math.min(255, (num & 0x0000FF) + amount));
-      return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')}`;
-    }
-
-    function rotatePoint(p, rotX, rotY) {
-      // Rotate around Y axis
-      let x = p.x * Math.cos(rotY) - p.z * Math.sin(rotY);
-      let z = p.x * Math.sin(rotY) + p.z * Math.cos(rotY);
-      
-      // Rotate around X axis
-      let y = p.y * Math.cos(rotX) - z * Math.sin(rotX);
-      z = p.y * Math.sin(rotX) + z * Math.cos(rotX);
-
-      return { ...p, x, y, z };
-    }
-
-    function render() {
-      ctx.fillStyle = '#1a1a2e';
-      ctx.fillRect(0, 0, width, height);
-
-      // Update rotation
-      rotationRef.current.x += 0.005;
-      rotationRef.current.y += 0.008;
-
-      // Rotate all points (keep original order)
-      const rotatedPoints = originalPoints.map(p => 
-        rotatePoint(p, rotationRef.current.x, rotationRef.current.y)
+      const point = new THREE.Vector3(
+        Math.cos(angle) * radius,
+        yPos,
+        Math.sin(angle) * radius
       );
-
-      // Draw backbone FIRST (in original order, not sorted)
-      ctx.strokeStyle = '#4a5568';
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      rotatedPoints.forEach((p, i) => {
-        const screenX = width / 2 + p.x * 2;
-        const screenY = height / 2 + p.y;
-        
-        if (i === 0) {
-          ctx.moveTo(screenX, screenY);
-        } else {
-          ctx.lineTo(screenX, screenY);
-        }
-      });
-      ctx.stroke();
-
-      // Now sort by depth for proper sphere rendering
-      const sortedForRendering = [...rotatedPoints].sort((a, b) => a.z - b.z);
-
-      // Draw amino acids as spheres
-      sortedForRendering.forEach(p => {
-        const screenX = width / 2 + p.x * 2;
-        const screenY = height / 2 + p.y;
-        const scale = 1 + (p.z / 300); // Perspective scaling
-        const size = 10 * scale;
-
-        // Shadow for depth
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
-        ctx.beginPath();
-        ctx.arc(screenX + 2, screenY + 2, size, 0, Math.PI * 2);
-        ctx.fill();
-
-        // Amino acid sphere with gradient
-        const gradient = ctx.createRadialGradient(
-          screenX - size/3, screenY - size/3, 0,
-          screenX, screenY, size
-        );
-        gradient.addColorStop(0, p.color);
-        gradient.addColorStop(1, adjustBrightness(p.color, -40));
-        
-        ctx.fillStyle = gradient;
-        ctx.beginPath();
-        ctx.arc(screenX, screenY, size, 0, Math.PI * 2);
-        ctx.fill();
-
-        // Highlight
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
-        ctx.beginPath();
-        ctx.arc(screenX - size/3, screenY - size/3, size/3, 0, Math.PI * 2);
-        ctx.fill();
-      });
-
-      animationRef.current = requestAnimationFrame(render);
-    }
-
-    render();
-
-    return () => {
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current);
-      }
-    };
+      point.aa = aa;
+      point.color = AA_COLORS[aa] || '#ccc';
+      point.positionIndex = i + 1;
+      return point;
+    });
   }, [sequence]);
 
+  const handlePointerOver = useCallback((aa, x, y) => {
+    setTooltip({
+      visible: true,
+      content: `${aa.aa} at position ${aa.positionIndex}`,
+      x: x,
+      y: y,
+    });
+  }, [setTooltip]);
+
+  const handlePointerOut = useCallback(() => {
+    setTooltip({ visible: false, content: '', x: 0, y: 0 });
+  }, [setTooltip]);
+
   return (
-    <div className="viewer-3d">
-      <canvas 
-        ref={canvasRef} 
-        width={800} 
-        height={600}
-        style={{ 
-          maxWidth: '100%', 
-          height: 'auto',
-          borderRadius: '8px',
-          background: '#1a1a2e'
-        }}
+    <>
+      {/* Amino Acid Spheres */}
+      {points.map((p, i) => (
+        <AminoAcidSphere
+          key={i}
+          position={[p.x, p.y, p.z]}
+          aa={{ aa: p.aa, positionIndex: p.positionIndex }}
+          color={p.color}
+          onHover={handlePointerOver}
+          onUnhover={handlePointerOut}
+        />
+      ))}
+      
+      {/* Backbone */}
+      <Line
+        points={points}
+        color="#4a5568"
+        lineWidth={5}
       />
-      <p className="info" style={{ marginTop: '10px', textAlign: 'center' }}>
-        🧬 Simplified alpha helix structure (auto-rotating)
-      </p>
-    </div>
+    </>
   );
+}
+
+
+
+function Protein3DViewer({ sequence }) {
+
+  const [tooltip, setTooltip] = useState({ visible: false, content: '', x: 0, y: 0 });
+
+
+
+  return (
+
+    <div className="viewer-3d" style={{ position: 'relative', height: '600px' }}>
+
+      {tooltip.visible && (
+
+        <div
+
+          style={{
+
+            position: 'absolute',
+
+            left: `${tooltip.x + 15}px`,
+
+            top: `${tooltip.y}px`,
+
+            background: 'rgba(0, 0, 0, 0.7)',
+
+            color: 'white',
+
+            padding: '5px 10px',
+
+            borderRadius: '4px',
+
+            pointerEvents: 'none',
+
+            transform: 'translateY(-50%)',
+
+            fontSize: '12px',
+
+            zIndex: 100,
+
+          }}
+
+        >
+
+          {tooltip.content}
+
+        </div>
+
+      )}
+
+      <Canvas 
+
+        camera={{ position: [0, 0, 40], fov: 50 }}
+
+        style={{ background: '#1a1a2e', borderRadius: '8px' }}
+
+      >
+
+        <ambientLight intensity={0.6} />
+
+        <directionalLight position={[10, 10, 5]} intensity={1} />
+
+        <directionalLight position={[-10, -10, -5]} intensity={0.5} />
+
+        
+
+        <ProteinModel sequence={sequence} setTooltip={setTooltip} />
+
+        
+
+        <OrbitControls 
+
+          enablePan={true}
+
+          enableZoom={true}
+
+          mouseButtons={{
+
+            LEFT: THREE.MOUSE.ROTATE,
+
+            MIDDLE: THREE.MOUSE.DOLLY,
+
+            RIGHT: THREE.MOUSE.PAN,
+
+          }}
+
+        />
+
+      </Canvas>
+
+       <p className="info" style={{ marginTop: '10px', textAlign: 'center' }}>
+
+        <b>Drag</b> to rotate, <b>Right-drag</b> to pan, <b>Scroll</b> to zoom.
+
+      </p>
+
+    </div>
+
+  );
+
 }
 
 function App() {
