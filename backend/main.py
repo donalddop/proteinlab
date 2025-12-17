@@ -1,10 +1,9 @@
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List
 from Bio import SeqIO
 from io import StringIO
-import json
 
 app = FastAPI(title="ProteinLab API", version="1.0.0")
 
